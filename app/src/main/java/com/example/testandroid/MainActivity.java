@@ -13,17 +13,12 @@ import androidx.appcompat.app.AppCompatActivity;
 
 import android.provider.MediaStore;
 import android.util.Log;
-import android.view.View;
-
-import androidx.navigation.NavController;
-import androidx.navigation.Navigation;
-import androidx.navigation.ui.AppBarConfiguration;
-import androidx.navigation.ui.NavigationUI;
-
 import com.example.testandroid.databinding.ActivityMainBinding;
 
 import android.view.Menu;
 import android.view.MenuItem;
+import android.widget.ImageView;
+import android.widget.TextView;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -32,7 +27,6 @@ import java.util.HashMap;
 
 public class MainActivity extends AppCompatActivity {
 
-    private AppBarConfiguration appBarConfiguration;
     private ActivityMainBinding binding;
     int PICK_AUDIO_REQUEST = 0;
     File saveWebp(Bitmap bitmap, String fname) {
@@ -60,7 +54,23 @@ public class MainActivity extends AppCompatActivity {
 
         if (requestCode == PICK_AUDIO_REQUEST && resultCode == RESULT_OK && data != null) {
             Uri audioUri = data.getData();
-            Log.d("Result Tag", "onActivityResult: " + getAudioMetaData(audioUri));
+            HashMap<String, Object> res =  getAudioMetaData(audioUri);
+            TextView titleTextView = findViewById(R.id.title);
+            TextView artistTextView = findViewById(R.id.artist);
+            TextView durationTextView = findViewById(R.id.duration);
+            ImageView artImageView = findViewById(R.id.image_art);
+
+            titleTextView.setText((String) res.get("title"));
+            artistTextView.setText((String) res.get("artist"));
+            durationTextView.setText(""+res.get("duration"));
+
+            File artFile = (File) res.get("art");
+            if (artFile != null && artFile.exists()) {
+                Bitmap bitmap = BitmapFactory.decodeFile(artFile.getAbsolutePath());
+                artImageView.setImageBitmap(bitmap);
+            } else {
+                artImageView.setImageResource(R.drawable.ic_launcher_foreground);
+            }
         }
     }
     private HashMap<String, Object> getAudioMetaData(Uri uri){
@@ -118,10 +128,5 @@ public class MainActivity extends AppCompatActivity {
         return super.onOptionsItemSelected(item);
     }
 
-    @Override
-    public boolean onSupportNavigateUp() {
-        NavController navController = Navigation.findNavController(this, R.id.nav_host_fragment_content_main);
-        return NavigationUI.navigateUp(navController, appBarConfiguration)
-                || super.onSupportNavigateUp();
-    }
+
 }
