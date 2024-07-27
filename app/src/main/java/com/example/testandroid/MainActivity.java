@@ -1,5 +1,7 @@
 package com.example.testandroid;
 
+import android.annotation.SuppressLint;
+import android.content.ContentUris;
 import android.content.Intent;
 import android.database.Cursor;
 import android.graphics.Bitmap;
@@ -11,6 +13,7 @@ import com.google.android.material.snackbar.Snackbar;
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
 
+import android.os.CancellationSignal;
 import android.provider.MediaStore;
 import android.util.Log;
 import android.view.View;
@@ -29,6 +32,7 @@ import android.view.MenuItem;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.util.HashMap;
 
 public class MainActivity extends AppCompatActivity {
@@ -36,8 +40,6 @@ public class MainActivity extends AppCompatActivity {
     private AppBarConfiguration appBarConfiguration;
     private ActivityMainBinding binding;
     int PICK_AUDIO_REQUEST = 0;
-
-
 //    private HashMap<String, Object> getFileMetadata(File file) throws IOException {
 //        HashMap<String, Object> res = new HashMap<>();
 //        MediaMetadataRetriever retriever = new MediaMetadataRetriever();
@@ -56,30 +58,67 @@ public class MainActivity extends AppCompatActivity {
 //        return res;
 //    }
 
-    private void getFileMetadata(File audioFile) {
-        FFmpegMediaMetadataRetriever mmr = new FFmpegMediaMetadataRetriever();
-        try {
-            mmr.setDataSource(audioFile.getAbsolutePath());
+//    private void getFileMetadata(File audioFile) {
+//        FFmpegMediaMetadataRetriever mmr = new FFmpegMediaMetadataRetriever();
+//        try {
+//            mmr.setDataSource(audioFile.getAbsolutePath());
+//
+//            String title = mmr.extractMetadata(FFmpegMediaMetadataRetriever.METADATA_KEY_TITLE);
+//            String artist = mmr.extractMetadata(FFmpegMediaMetadataRetriever.METADATA_KEY_ARTIST);
+//            byte[] artwork = mmr.getEmbeddedPicture();
+//
+//            Log.d("MainActivity", "Title: " + title);
+//            Log.d("MainActivity", "Artist: " + artist);
+//            if (artwork != null) {
+//                Log.d("MainActivity", "Artwork found");
+//            } else {
+//                Log.d("MainActivity", "No artwork found");
+//            }
+//        } catch (Exception e) {
+//            e.printStackTrace();
+//        } finally {
+//            mmr.release();
+//        }
+//    }
+//
+@SuppressLint("Range")
+private HashMap<String, Object> getFileMetadata(File file) throws IOException {
+    HashMap<String, Object> res = new HashMap<>();
+    String title = "", artist = "";
+    long albumId = 0;
+    long duration = 0;
+    Cursor cursor = null;
+    String path = file.getAbsolutePath();
+    Log.d("path", "dddddddddd " + path);
 
-            String title = mmr.extractMetadata(FFmpegMediaMetadataRetriever.METADATA_KEY_TITLE);
-            String artist = mmr.extractMetadata(FFmpegMediaMetadataRetriever.METADATA_KEY_ARTIST);
-            byte[] artwork = mmr.getEmbeddedPicture();
-
-            Log.d("MainActivity", "Title: " + title);
-            Log.d("MainActivity", "Artist: " + artist);
-            if (artwork != null) {
-                Log.d("MainActivity", "Artwork found");
-            } else {
-                Log.d("MainActivity", "No artwork found");
-            }
-        } catch (Exception e) {
-            e.printStackTrace();
-        } finally {
-            mmr.release();
+    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+         cursor = getContentResolver().query(MediaStore.Audio.Media.getContentUriForPath(file.getPath()), new String[]{MediaStore.Audio.Media.ARTIST, MediaStore.Audio.Media.DURATION, MediaStore.Audio.Media.TITLE, MediaStore.Audio.Media.ALBUM_ID, MediaStore.Audio.Media.DATA},
+                 MediaStore.Audio.Media.DATA + "=?", new String[]{ path }, null);
+    }
+    Log.d("ddddddd", "cursor " + cursor);
+    if (cursor !=null && cursor.moveToFirst()){
+        duration = cursor.getLong(cursor.getColumnIndex(MediaStore.Audio.Media.DURATION));
+        artist = cursor.getString(cursor.getColumnIndex(MediaStore.Audio.Media.ARTIST));
+        title = cursor.getString(cursor.getColumnIndex(MediaStore.Audio.Media.TITLE));
+        albumId = cursor.getLong(cursor.getColumnIndex(MediaStore.Audio.Media.ALBUM_ID));
+        Log.d("dddddddddd" ,  "artist: " +artist + " title " + artist + " albumId " + albumId +  " Data " + cursor.getString(cursor.getColumnIndex(MediaStore.Audio.Media.DATA)));
+    }
+    res.put("duration", duration);
+    res.put("title", title);
+    res.put("artist", artist);
+    Uri albumArtUri = Uri.parse("content://media/external/audio/albumart");
+    Uri artworkUri = ContentUris.withAppendedId(albumArtUri, albumId);
+    try (InputStream inputStream = getContentResolver().openInputStream(artworkUri)){
+        Bitmap bitmap = BitmapFactory.decodeStream(inputStream);
+        if (bitmap != null) {
+            res.put("art", saveWebp(bitmap, System.currentTimeMillis() + ".webp"));
         }
+    } catch (Exception e){
+        Log.d("ddddddd error", e.toString());
     }
 
-
+    return res;
+}
 
     File saveWebp(Bitmap bitmap, String fname) {
         File new_file = new File(getCacheDir(), fname);
@@ -107,25 +146,28 @@ public class MainActivity extends AppCompatActivity {
         if (requestCode == PICK_AUDIO_REQUEST && resultCode == RESULT_OK && data != null) {
             Uri audioUri = data.getData();
             String filePath = getRealPathFromURI(audioUri);
-
             if (filePath != null) {
                 File audioFile = new File(filePath);
-
-                    getFileMetadata(audioFile);
-//                    Log.d("MainActivity dddddddddddd", getFileMetadata(audioFile));
-
-                Log.d("MainActivity dddddddddddd 222", "Audio File Path: " + audioFile.getAbsolutePath());
+                try {
+                    Log.d("ddddddddddd result ", getFileMetadata(audioFile).toString());
+                } catch (IOException e) {
+                    throw new RuntimeException(e);
+                }
             }
         }
     }
-
     private String getRealPathFromURI(Uri uri) {
-        String[] projection = {MediaStore.Audio.Media.DATA};
+        String[] projection = {MediaStore.Audio.Media.DATA, MediaStore.Audio.Media.TITLE, MediaStore.Audio.Media.ARTIST, MediaStore.Audio.Media.DURATION, MediaStore.Audio.Media.ALBUM_ID};
         Cursor cursor = getContentResolver().query(uri, projection, null, null, null);
         if (cursor != null) {
             int columnIndex = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DATA);
             cursor.moveToFirst();
             String filePath = cursor.getString(columnIndex);
+            Log.d("dddddddd in here", "title: " + cursor.getString(cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.TITLE)));
+            Log.d("dddddddd in here", "artist: " + cursor.getString(cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.ARTIST)));
+            Log.d("dddddddd in here", "duration: " + cursor.getString(cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DURATION)));
+            Log.d("dddddddd in here", "albumId: " + cursor.getString(cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.ALBUM_ID)));
+            Log.d("dddddddd in here", "Data: " + filePath);
             cursor.close();
             return filePath;
         }
